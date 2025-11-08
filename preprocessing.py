@@ -1,70 +1,73 @@
-# preprocess.py
 import cv2
 import numpy as np
 
-# Default settings for MNIST-like preprocessing
-PREPROCESS_OUTPUT_SIZE = (28, 28)   # (width, height)
-PREPROCESS_PADDING_RATIO = 0.2      # 20% padding around bounding box
+PREPROCESS_OUTPUT_SIZE = (28, 28)
+PREPROCESS_PADDING_RATIO = 0.2
 
 def preprocess_for_mnist(
     image,
     output_size: tuple[int, int] = PREPROCESS_OUTPUT_SIZE,
     padding_ratio: float = PREPROCESS_PADDING_RATIO,
 ) -> np.ndarray:
-    """
-    Convert a finger-drawn digit on a canvas into an MNIST-like 28x28 image.
-
-    Args:
-        image: BGR or grayscale image (H x W x 3 or H x W).
-        output_size: (width, height) of output image. Default (28, 28).
-        padding_ratio: Extra padding as a fraction of bounding-box size.
-
-    Returns:
-        output: uint8 array of shape (output_h, output_w),
-                with digit bright on dark background (MNIST style).
-    """
+    """Convert finger-drawn digit to MNIST-like 28x28 image."""
     out_w, out_h = output_size
 
-    # 1) Convert to grayscale
     if len(image.shape) == 3:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     else:
         gray = image.copy()
 
-    # 2) Threshold (invert) just for contour detection:
-    #    - THRESH_BINARY_INV: dark strokes become white (255), bg becomes black (0)
-    _, binary = cv2.threshold(
-        gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-    )
+    img_size = max(gray.shape[0], gray.shape[1])
+    
+    if img_size > 300:
+        block_size = max(11, int(img_size / 20))
+        if block_size % 2 == 0:
+            block_size += 1
+        binary = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, block_size, 10
+        )
+    else:
+        _, binary = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+        white_ratio = np.sum(binary == 255) / binary.size
+        if white_ratio > 0.95 or white_ratio < 0.01:
+            _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
 
-    # Mild cleanup to remove noise
-    kernel_small = np.ones((2, 2), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_small)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel_small)
+    img_size = max(gray.shape[0], gray.shape[1])
+    kernel_size = 3 if img_size > 200 else 2
+    
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
 
-    # 3) Find contours of the digit
     contours, _ = cv2.findContours(
         binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
 
     if not contours:
-        # No digit -> return a blank MNIST-like image (background only)
-        return np.zeros((out_h, out_w), dtype=np.uint8)
+        dark_pixels = np.where(gray < 200)
+        if len(dark_pixels[0]) > 0:
+            y_coords = dark_pixels[0]
+            x_coords = dark_pixels[1]
+            x_min, x_max = int(np.min(x_coords)), int(np.max(x_coords))
+            y_min, y_max = int(np.min(y_coords)), int(np.max(y_coords))
+        else:
+            return np.zeros((out_h, out_w), dtype=np.uint8)
+    else:
+        x_min = gray.shape[1]
+        y_min = gray.shape[0]
+        x_max = 0
+        y_max = 0
 
-    # 4) Bounding box around all strokes
-    x_min = gray.shape[1]
-    y_min = gray.shape[0]
-    x_max = 0
-    y_max = 0
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            x_min = min(x_min, x)
+            y_min = min(y_min, y)
+            x_max = max(x_max, x + w)
+            y_max = max(y_max, y + h)
 
-    for contour in contours:
-        x, y, w, h = cv2.boundingRect(contour)
-        x_min = min(x_min, x)
-        y_min = min(y_min, y)
-        x_max = max(x_max, x + w)
-        y_max = max(y_max, y + h)
-
-    # 5) Add padding around digit
     padding_x = int((x_max - x_min) * padding_ratio)
     padding_y = int((y_max - y_min) * padding_ratio)
 
@@ -77,52 +80,52 @@ def preprocess_for_mnist(
     if roi.size == 0:
         return np.zeros((out_h, out_w), dtype=np.uint8)
 
-    # 6) Invert intensity to match MNIST:
-    #    - Input: dark digit on light bg
-    #    - MNIST: bright digit on dark bg
     roi = 255 - roi
-
-    # Optional: thicken strokes slightly so they survive downscaling
-    kernel = np.ones((2, 2), np.uint8)
-    roi = cv2.dilate(roi, kernel, iterations=1)
-
-    # 7) Resize ROI: longest side -> 20 pixels, keep aspect ratio
     roi_h, roi_w = roi.shape
-    scale = 20.0 / max(roi_w, roi_h)
-    new_w = max(1, int(roi_w * scale))
-    new_h = max(1, int(roi_h * scale))
+
+    roi_size = max(roi_w, roi_h)
+    if roi_size > 100:
+        kernel_size = 3
+        iterations = 2
+    elif roi_size > 50:
+        kernel_size = 2
+        iterations = 1
+    else:
+        kernel_size = 2
+        iterations = 1
+    
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    roi = cv2.dilate(roi, kernel, iterations=iterations)
+
+    roi_h, roi_w = roi.shape
+    max_dimension = max(roi_w, roi_h)
+    if max_dimension > 0:
+        scale = 20.0 / max_dimension
+        new_w = max(1, int(roi_w * scale))
+        new_h = max(1, int(roi_h * scale))
+    else:
+        new_w, new_h = 1, 1
 
     resized = cv2.resize(roi, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    # 8) Center inside a 28x28 canvas
-    output = np.zeros((out_h, out_w), dtype=np.uint8)  # background=0
+    output = np.zeros((out_h, out_w), dtype=np.uint8)
     start_x = (out_w - new_w) // 2
     start_y = (out_h - new_h) // 2
     output[start_y:start_y + new_h, start_x:start_x + new_w] = resized
 
-    # 9) Light Gaussian blur to mimic MNIST anti-aliasing
     output = cv2.GaussianBlur(output, (3, 3), 0.5)
-
     return output
 
 
 def to_mlp_input(image: np.ndarray) -> np.ndarray:
-    """
-    Preprocess an image and return data shaped for your MLP:
-        model: Input(shape=(28, 28))
-    Output shape: (1, 28, 28), float32, range [0, 1]
-    """
+    """Preprocess image for MLP input: (1, 28, 28), float32, [0, 1]."""
     img = preprocess_for_mnist(image)
     img = img.astype("float32") / 255.0
     return img.reshape(1, 28, 28)
 
 
 def to_cnn_input(image: np.ndarray) -> np.ndarray:
-    """
-    Preprocess an image and return data shaped for a CNN:
-        model: Input(shape=(28, 28, 1))
-    Output shape: (1, 28, 28, 1), float32, range [0, 1]
-    """
+    """Preprocess image for CNN input: (1, 28, 28, 1), float32, [0, 1]."""
     img = preprocess_for_mnist(image)
     img = img.astype("float32") / 255.0
     return img.reshape(1, 28, 28, 1)

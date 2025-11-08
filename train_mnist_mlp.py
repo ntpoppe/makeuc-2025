@@ -1,17 +1,13 @@
-# train_mnist_mlp.py
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 import os
 
-# Load MNIST
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 
-# Normalize to [0,1]
 x_train = x_train.astype("float32") / 255.0
-x_test  = x_test.astype("float32") / 255.0
+x_test = x_test.astype("float32") / 255.0
 
-# Split training data for validation
 val_size = int(0.1 * len(x_train))
 x_val = x_train[:val_size]
 y_val = y_train[:val_size]
@@ -22,10 +18,9 @@ print(f"Training samples: {len(x_train)}")
 print(f"Validation samples: {len(x_val)}")
 print(f"Test samples: {len(x_test)}")
 
-# Larger dense network: 784 -> 128 -> 128 -> 64 -> 10
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(28, 28)),
-    tf.keras.layers.Flatten(),                      # 28*28 = 784
+    tf.keras.layers.Flatten(),
     tf.keras.layers.Dense(128, activation="relu", name="dense1", 
                           kernel_initializer="he_normal"),
     tf.keras.layers.BatchNormalization(name="bn1"),
@@ -86,7 +81,6 @@ history = model.fit(
     verbose=1,
 )
 
-# Load best model if checkpoint was created
 if os.path.exists("best_model.h5"):
     print("\nLoading best model weights...")
     model.load_weights("best_model.h5")
@@ -103,15 +97,15 @@ dense2 = model.get_layer("dense2")
 dense3 = model.get_layer("dense3")
 output = model.get_layer("output")
 
-W1, b1 = dense1.get_weights()   # (784,128), (128,)
-W2, b2 = dense2.get_weights()   # (128,128), (128,)
-W3, b3 = dense3.get_weights()   # (128,64), (64,)
-W4, b4 = output.get_weights()  # (64,10), (10,)
+W1, b1 = dense1.get_weights()
+W2, b2 = dense2.get_weights()
+W3, b3 = dense3.get_weights()
+W4, b4 = output.get_weights()
 
-W1 = W1.T   # (128,784)
-W2 = W2.T   # (128,128)
-W3 = W3.T   # (64,128)
-W4 = W4.T   # (10,64)
+W1 = W1.T
+W2 = W2.T
+W3 = W3.T
+W4 = W4.T
 
 np.savez(
     "mnist_mlp_weights.npz",
@@ -123,7 +117,6 @@ np.savez(
 
 print("✓ Saved weights to mnist_mlp_weights.npz")
 
-# Clean up checkpoint file
 if os.path.exists("best_model.h5"):
     os.remove("best_model.h5")
     print("✓ Cleaned up checkpoint file")
