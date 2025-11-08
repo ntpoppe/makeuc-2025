@@ -100,3 +100,7 @@ traces/
 traces_preprocessed/
 
 .venv/
+
+# Model checkpoints
+*.h5
+best_model.h5

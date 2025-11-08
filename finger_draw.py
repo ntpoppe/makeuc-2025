@@ -19,7 +19,7 @@ from config import (
     CAMERA_INDEX,
 )
 from preprocessing import preprocess_for_mnist
-
+from mnist_model import predict_digit_from_28x28
 
 def detect_two_fingers_up(hand_landmarks, frame_w, frame_h):
     """Check if index and middle fingers are extended."""
@@ -38,27 +38,68 @@ def detect_two_fingers_up(hand_landmarks, frame_w, frame_h):
     return False, None
 
 
-def save_trace_image(canvas, has_active_stroke):
-    """Save original and preprocessed trace images."""
+def predict_digit(canvas):
+    """Preprocess canvas and predict digit using MNIST model."""
+    # Make a copy to avoid modifying the original canvas
+    canvas_copy = canvas.copy()
+    
+    # Check if canvas has any drawing (dark strokes on light background)
+    # Canvas has white background (255) with black strokes (0)
+    non_white_pixels = np.sum(canvas_copy < 250)
+    if non_white_pixels < 10:  # Too few pixels, likely empty
+        return 0, 0.0, np.zeros((28, 28), dtype=np.uint8)  # Dark background (MNIST format)
+    
+    # Output: black background (0) with white digit (255)
+    preprocessed = preprocess_for_mnist(canvas_copy)
+    
+    bright_pixels = np.sum(preprocessed > 200)
+    
+    if bright_pixels < 10:
+        return 0, 0.0, preprocessed
+    
+    preprocessed = np.clip(preprocessed, 0, 255)  # Ensure valid range
+    
+    preprocessed_normalized = preprocessed.astype(np.float32) / 255.0
+    
+    preprocessed_normalized = np.clip(preprocessed_normalized, 0.0, 1.0)
+    
+    digit, probs, acts = predict_digit_from_28x28(preprocessed_normalized)
+    confidence = float(probs[digit])
+    return digit, confidence, preprocessed
+
+
+def save_trace_image(canvas, has_active_stroke, prediction=None):
+    """Save original and preprocessed trace images, and predict digit."""
     if not has_active_stroke:
-        return
+        return prediction
+    
+    non_white = np.sum(canvas < 250)
+    if non_white < 100:
+        return prediction  # Return old prediction, don't update
     
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    
+    # Predict digit (this makes a copy internally)
+    try:
+        digit, confidence, preprocessed = predict_digit(canvas)
+        prediction = (digit, confidence)
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        return prediction
     
     # Save original
     filename = os.path.join(TRACES_DIR, f"trace_{ts}.png")
     cv2.imwrite(filename, canvas)
-    print(f"Saved trace: {filename}")
     
     # Save preprocessed
-    preprocessed = preprocess_for_mnist(canvas)
     preprocessed_filename = os.path.join(TRACES_PREPROCESSED_DIR, f"trace_{ts}_preprocessed.png")
     cv2.imwrite(preprocessed_filename, preprocessed)
-    print(f"Saved preprocessed: {preprocessed_filename} ({PREPROCESS_OUTPUT_SIZE[0]}x{PREPROCESS_OUTPUT_SIZE[1]})")
+    
+    return prediction
 
 
-def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h):
-    """Create preview with camera feed, canvas overlay, and fingertip indicator."""
+def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, prediction=None):
+    """Create preview with camera feed, canvas overlay, fingertip indicator, and prediction."""
     preview = cv2.addWeighted(frame, 0.5, canvas, 0.5, 0)
     
     if fingertip_point is not None:
@@ -69,6 +110,22 @@ def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h):
         x = int(index_tip.x * frame_w)
         y = int(index_tip.y * frame_h)
         cv2.circle(preview, (x, y), 8, (0, 0, 255), -1)  # Red: hand detected but not drawing
+    
+    # Display prediction if available
+    if prediction is not None:
+        digit, confidence = prediction
+        text = f"Prediction: {digit} ({confidence:.1%})"
+        # Draw background rectangle for text
+        (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
+        cv2.rectangle(preview, (10, 10), (20 + text_width, 40 + text_height), (0, 0, 0), -1)
+        # Color based on confidence: green if high, yellow if medium, red if low
+        if confidence > 0.7:
+            color = (0, 255, 0)  # Green
+        elif confidence > 0.4:
+            color = (0, 255, 255)  # Yellow
+        else:
+            color = (0, 0, 255)  # Red
+        cv2.putText(preview, text, (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
     
     return preview
 
@@ -104,8 +161,9 @@ def main():
     last_point = None
     no_hand_frames = 0
     has_active_stroke = False
+    current_prediction = None
     
-    print("Running. Press 'q' to quit, 'c' to clear canvas.")
+    print("Running. Press 'q' to quit, 'c' to clear canvas, 'p' to predict digit.")
     
     try:
         while True:
@@ -128,6 +186,9 @@ def main():
             
             # Draw on canvas
             if two_fingers_up and fingertip_point is not None:
+                # Clear prediction when starting a new drawing
+                if not has_active_stroke:
+                    current_prediction = None
                 no_hand_frames = 0
                 if last_point is not None:
                     cv2.line(canvas, last_point, fingertip_point, LINE_COLOR, LINE_THICKNESS)
@@ -137,33 +198,45 @@ def main():
                 last_point = None
                 no_hand_frames += 1
                 
-                # Auto-save after hand is gone
+                # Auto-predict and save after hand is gone
                 if no_hand_frames >= NO_HAND_FRAMES_THRESHOLD and has_active_stroke:
-                    save_trace_image(canvas, has_active_stroke)
-                    canvas[:] = 255
+                    # Make prediction BEFORE clearing canvas
+                    current_prediction = save_trace_image(canvas, has_active_stroke, current_prediction)
+                    # Clear canvas AFTER prediction
+                    canvas.fill(255)
                     has_active_stroke = False
+                    no_hand_frames = 0
             
             # Display preview
-            preview = create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h)
+            preview = create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, current_prediction)
             cv2.imshow("Finger Trace (preview)", preview)
             
             # Check window close
             if cv2.getWindowProperty("Finger Trace (preview)", cv2.WND_PROP_VISIBLE) < 1:
                 if has_active_stroke:
-                    save_trace_image(canvas, has_active_stroke)
+                    save_trace_image(canvas, has_active_stroke, current_prediction)
                 break
             
             # Handle keyboard input
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 if has_active_stroke:
-                    save_trace_image(canvas, has_active_stroke)
+                    save_trace_image(canvas, has_active_stroke, current_prediction)
                 break
             elif key == ord('c'):
                 canvas[:] = 255
                 has_active_stroke = False
                 last_point = None
                 no_hand_frames = 0
+                current_prediction = None
+            elif key == ord('p'):
+                # Manual prediction trigger
+                if has_active_stroke:
+                    try:
+                        digit, confidence, preprocessed = predict_digit(canvas)
+                        current_prediction = (digit, confidence)
+                    except Exception as e:
+                        print(f"Prediction error: {e}")
     
     finally:
         cap.release()

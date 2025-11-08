@@ -10,8 +10,8 @@ LINE_THICKNESS = 6
 NO_HAND_FRAMES_THRESHOLD = 10
 
 # Preprocessing settings 
-PREPROCESS_OUTPUT_SIZE = (28, 28)  # (width, height)
-PREPROCESS_PADDING_RATIO = 0.1  # 10% padding around digit
+PREPROCESS_OUTPUT_SIZE = (28, 28)  
+PREPROCESS_PADDING_RATIO = 0.1
 
 # MediaPipe settings
 MIN_DETECTION_CONFIDENCE = 0.6
