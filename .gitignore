@@ -104,3 +104,4 @@ traces_preprocessed/
 # Model checkpoints
 *.h5
 best_model.h5
+run_with_qt.sh
