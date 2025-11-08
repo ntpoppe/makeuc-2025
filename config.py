@@ -14,3 +14,7 @@ MAX_NUM_HANDS = 1
 
 CAMERA_INDEX = 0
 
+SMOOTHING_ALPHA = 0.5 # 0–1; higher = follow finger more, lower = smoother
+MIN_MOVE_PIXELS = 2 # ignore tiny movements (jitter)
+MAX_JUMP_PIXELS = 80 # treat bigger jumps as “pen up”
+

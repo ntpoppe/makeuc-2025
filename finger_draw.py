@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 import mediapipe as mp
+import math
 from datetime import datetime
 
 from config import (
@@ -10,17 +11,27 @@ from config import (
     LINE_COLOR,
     LINE_THICKNESS,
     NO_HAND_FRAMES_THRESHOLD,
-    PREPROCESS_OUTPUT_SIZE,
     MIN_DETECTION_CONFIDENCE,
     MIN_TRACKING_CONFIDENCE,
     MAX_NUM_HANDS,
     CAMERA_INDEX,
+    SMOOTHING_ALPHA,
+    MIN_MOVE_PIXELS,
+    MAX_JUMP_PIXELS,
 )
 from preprocessing import preprocess_for_mnist
 from mnist_model import predict_digit_from_28x28
 
+def smooth_point(prev_point, new_point, alpha=SMOOTHING_ALPHA):
+    """Exponential smoothing between previous and new point."""
+    if prev_point is None:
+        return new_point
+    x = int(alpha * new_point[0] + (1 - alpha) * prev_point[0])
+    y = int(alpha * new_point[1] + (1 - alpha) * prev_point[1])
+    return (x, y)
+
 def detect_two_fingers_up(hand_landmarks, frame_w, frame_h):
-    """Check if index and middle fingers are extended."""
+    """check if index and middle fingers are extended."""
     index_tip = hand_landmarks.landmark[8]
     index_pip = hand_landmarks.landmark[6]
     middle_tip = hand_landmarks.landmark[12]
@@ -35,9 +46,8 @@ def detect_two_fingers_up(hand_landmarks, frame_w, frame_h):
         return True, (x, y)
     return False, None
 
-
 def predict_digit(canvas):
-    """Preprocess canvas and predict digit using MNIST model."""
+    """preprocess canvas and predict digit using mnist model."""
     canvas_copy = canvas.copy()
     
     non_white_pixels = np.sum(canvas_copy < 250)
@@ -58,7 +68,7 @@ def predict_digit(canvas):
 
 
 def save_trace_image(canvas, has_active_stroke, prediction=None):
-    """Save original and preprocessed trace images, and predict digit."""
+    """save original and preprocessed trace images, and predict digit."""
     if not has_active_stroke:
         return prediction
     
@@ -72,7 +82,7 @@ def save_trace_image(canvas, has_active_stroke, prediction=None):
         digit, confidence, preprocessed = predict_digit(canvas)
         prediction = (digit, confidence)
     except Exception as e:
-        print(f"Prediction error: {e}")
+        print(f"prediction error: {e}")
         return prediction
     
     filename = os.path.join(TRACES_DIR, f"trace_{ts}.png")
@@ -85,7 +95,7 @@ def save_trace_image(canvas, has_active_stroke, prediction=None):
 
 
 def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, prediction=None):
-    """Create preview with camera feed, canvas overlay, fingertip indicator, and prediction."""
+    """create preview with camera feed, canvas overlay, fingertip indicator, and prediction."""
     preview = cv2.addWeighted(frame, 0.5, canvas, 0.5, 0)
     
     if fingertip_point is not None:
@@ -99,7 +109,7 @@ def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, pr
     
     if prediction is not None:
         digit, confidence = prediction
-        text = f"Prediction: {digit} ({confidence:.1%})"
+        text = f"prediction: {digit} ({confidence:.1%})"
         (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
         cv2.rectangle(preview, (10, 10), (20 + text_width, 40 + text_height), (0, 0, 0), -1)
         if confidence > 0.7:
@@ -114,7 +124,7 @@ def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, pr
 
 
 def main():
-    """Main application loop."""
+    """main application loop."""
     os.makedirs(TRACES_DIR, exist_ok=True)
     os.makedirs(TRACES_PREPROCESSED_DIR, exist_ok=True)
     
@@ -128,21 +138,22 @@ def main():
     
     cap = cv2.VideoCapture(CAMERA_INDEX)
     if not cap.isOpened():
-        raise RuntimeError(f"Could not open camera (index {CAMERA_INDEX})")
+        raise RuntimeError(f"could not open camera (index {CAMERA_INDEX})")
     
     ret, frame = cap.read()
     if not ret:
-        raise RuntimeError("Could not read from camera")
+        raise RuntimeError("could not read from camera")
     
     frame_h, frame_w = frame.shape[:2]
     canvas = np.ones((frame_h, frame_w, 3), dtype=np.uint8) * 255
     
     last_point = None
+    smoothed_point = None
     no_hand_frames = 0
     has_active_stroke = False
     current_prediction = None
     
-    print("Running. Press 'q' to quit, 'c' to clear canvas, 'p' to predict digit.")
+    print("running. press 'q' to quit, 'c' to clear canvas, 'p' to predict digit.")
     
     try:
         while True:
@@ -165,15 +176,39 @@ def main():
             if two_fingers_up and fingertip_point is not None:
                 if not has_active_stroke:
                     current_prediction = None
+
                 no_hand_frames = 0
-                if last_point is not None:
-                    cv2.line(canvas, last_point, fingertip_point, LINE_COLOR, LINE_THICKNESS)
-                    has_active_stroke = True
-                last_point = fingertip_point
+
+                # Update smoothed point
+                smoothed_point = smooth_point(smoothed_point, fingertip_point)
+
+                if last_point is not None and smoothed_point is not None:
+                    dx = smoothed_point[0] - last_point[0]
+                    dy = smoothed_point[1] - last_point[1]
+                    dist = math.hypot(dx, dy)
+
+                    # Ignore tiny jitter
+                    if dist < MIN_MOVE_PIXELS:
+                        # Don’t draw, but keep last_point so line stays continuous
+                        pass
+                    # If there’s a huge jump, treat as stroke break
+                    elif dist > MAX_JUMP_PIXELS:
+                        last_point = smoothed_point
+                    else:
+                        # Normal movement: draw smooth line
+                        cv2.line(canvas, last_point, smoothed_point, LINE_COLOR, LINE_THICKNESS)
+                        has_active_stroke = True
+                        last_point = smoothed_point
+                else:
+                    # First point in the stroke
+                    last_point = smoothed_point
             else:
+                # Hand not in "drawing" pose
                 last_point = None
+                smoothed_point = None
                 no_hand_frames += 1
                 
+                # Auto-predict and save after hand is gone
                 if no_hand_frames >= NO_HAND_FRAMES_THRESHOLD and has_active_stroke:
                     current_prediction = save_trace_image(canvas, has_active_stroke, current_prediction)
                     canvas.fill(255)
@@ -181,17 +216,17 @@ def main():
                     no_hand_frames = 0
             
             preview = create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, current_prediction)
-            cv2.imshow("Finger Trace (preview)", preview)
+            cv2.imshow("finger trace (preview)", preview)
             
-            if cv2.getWindowProperty("Finger Trace (preview)", cv2.WND_PROP_VISIBLE) < 1:
+            if cv2.getWindowProperty("finger trace (preview)", cv2.WND_PROP_VISIBLE) < 1:
                 if has_active_stroke:
-                    save_trace_image(canvas, has_active_stroke, current_prediction)
+                    current_prediction = save_trace_image(canvas, has_active_stroke, current_prediction)
                 break
             
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 if has_active_stroke:
-                    save_trace_image(canvas, has_active_stroke, current_prediction)
+                    current_prediction = save_trace_image(canvas, has_active_stroke, current_prediction)
                 break
             elif key == ord('c'):
                 canvas[:] = 255
@@ -205,7 +240,7 @@ def main():
                         digit, confidence, preprocessed = predict_digit(canvas)
                         current_prediction = (digit, confidence)
                     except Exception as e:
-                        print(f"Prediction error: {e}")
+                        print(f"prediction error: {e}")
     
     finally:
         cap.release()
