@@ -22,6 +22,39 @@ from config import (
 from preprocessing import preprocess_for_mnist
 from mnist_model import predict_digit_from_28x28
 
+def open_camera(index: int = CAMERA_INDEX, width: int = 640, height: int = 480, fps: int = 30):
+    """
+    Returns a cv2.VideoCapture that works on both headless CLI and VNC.
+    Tries (in order):
+      1. GStreamer + libcamera
+      2. V4L2 device node 
+      3. Fallback to any index
+    """
+    # GStreamer + libcamera
+    gst_pipeline = (
+        f'libcamerasrc ! '
+        f'video/x-raw,width={width},height={height},framerate={fps}/1 ! '
+        f'videoconvert ! appsink'
+    )
+    cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+    if cap.isOpened():
+        print("Camera opened with GStreamer (libcamera)")
+        return cap
+
+    # Classic V4L2 
+    cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
+    if cap.isOpened():
+        print(f"Camera opened with V4L2 (index {index})")
+        return cap
+
+    # Plain index
+    cap = cv2.VideoCapture(index)
+    if cap.isOpened():
+        print(f"Camera opened with generic backend (index {index})")
+        return cap
+
+    raise RuntimeError(f"Could not open camera (index {index}) - tried GStreamer, V4L2 and generic")
+
 def smooth_point(prev_point, new_point, alpha=SMOOTHING_ALPHA):
     """Exponential smoothing between previous and new point."""
     if prev_point is None:
@@ -93,7 +126,6 @@ def save_trace_image(canvas, has_active_stroke, prediction=None):
     
     return prediction
 
-
 def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, prediction=None):
     """create preview with camera feed, canvas overlay, fingertip indicator, and prediction."""
     preview = cv2.addWeighted(frame, 0.5, canvas, 0.5, 0)
@@ -136,9 +168,7 @@ def main():
         min_tracking_confidence=MIN_TRACKING_CONFIDENCE,
     )
     
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    if not cap.isOpened():
-        raise RuntimeError(f"could not open camera (index {CAMERA_INDEX})")
+    cap = open_camera()
     
     ret, frame = cap.read()
     if not ret:
