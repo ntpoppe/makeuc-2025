@@ -226,7 +226,10 @@ train_ds = train_ds.shuffle(len(x_train), reshuffle_each_iteration=True)
 val_ds = tf.data.Dataset.from_tensor_slices((x_val, y_val)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-if custom_eight_train_x is not None and len(custom_eight_train_x):
+# Set up augmentation for custom samples (8s and 2s)
+augmentation_layer = None
+if (custom_eight_train_x is not None and len(custom_eight_train_x)) or \
+   (custom_two_train_x is not None and len(custom_two_train_x)):
     augmentation_layer = build_custom_eight_augmentation()
 
     def augment_custom(image: tf.Tensor, label: tf.Tensor):
@@ -236,14 +239,25 @@ if custom_eight_train_x is not None and len(custom_eight_train_x):
         image = tf.clip_by_value(image, 0.0, 1.0)
         return image, label
 
-    custom_aug_ds = tf.data.Dataset.from_tensor_slices((custom_eight_train_x, custom_eight_train_y))
-    custom_aug_ds = custom_aug_ds.shuffle(len(custom_eight_train_x), reshuffle_each_iteration=True)
-    custom_aug_ds = custom_aug_ds.map(augment_custom, num_parallel_calls=tf.data.AUTOTUNE)
-    train_ds = train_ds.concatenate(custom_aug_ds)
+# Add augmented 8s to training
+if custom_eight_train_x is not None and len(custom_eight_train_x):
+    custom_eight_aug_ds = tf.data.Dataset.from_tensor_slices((custom_eight_train_x, custom_eight_train_y))
+    custom_eight_aug_ds = custom_eight_aug_ds.shuffle(len(custom_eight_train_x), reshuffle_each_iteration=True)
+    custom_eight_aug_ds = custom_eight_aug_ds.map(augment_custom, num_parallel_calls=tf.data.AUTOTUNE)
+    train_ds = train_ds.concatenate(custom_eight_aug_ds)
+
+# Add augmented 2s to training
+if custom_two_train_x is not None and len(custom_two_train_x):
+    custom_two_aug_ds = tf.data.Dataset.from_tensor_slices((custom_two_train_x, custom_two_train_y))
+    custom_two_aug_ds = custom_two_aug_ds.shuffle(len(custom_two_train_x), reshuffle_each_iteration=True)
+    custom_two_aug_ds = custom_two_aug_ds.map(augment_custom, num_parallel_calls=tf.data.AUTOTUNE)
+    train_ds = train_ds.concatenate(custom_two_aug_ds)
 
 total_train_samples = len(x_train)
 if custom_eight_train_x is not None and len(custom_eight_train_x):
     total_train_samples += len(custom_eight_train_x)
+if custom_two_train_x is not None and len(custom_two_train_x):
+    total_train_samples += len(custom_two_train_x)
 
 steps_per_epoch = math.ceil(total_train_samples / batch_size)
 train_ds = train_ds.shuffle(total_train_samples, reshuffle_each_iteration=True)
