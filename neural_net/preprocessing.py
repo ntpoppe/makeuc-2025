@@ -113,7 +113,12 @@ def preprocess_for_mnist(
     start_y = (out_h - new_h) // 2
     output[start_y:start_y + new_h, start_x:start_x + new_w] = resized
 
+    # Light blur for slight smoothing, then threshold to make solid white
     output = cv2.GaussianBlur(output, (3, 3), 0.5)
+    
+    # Threshold to make whites more solid (anything above 50 becomes 255)
+    _, output = cv2.threshold(output, 50, 255, cv2.THRESH_BINARY)
+    
     return output
 
 

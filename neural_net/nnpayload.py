@@ -40,20 +40,36 @@ def normalize_to_0_255(v: np.ndarray) -> np.ndarray:
     v_norm = v / vmax
     return (v_norm * 255).astype(np.uint8)
 
+def average_groups_of_8(v: np.ndarray) -> np.ndarray:
+    """
+    Average groups of 8 values: [a, b, c, d, e, f, g, h, ...] -> [(a+b+c+d+e+f+g+h)/8, ...]
+    Input shape (n,) -> Output shape (n//8,)
+    """
+    if len(v) % 8 != 0:
+        raise ValueError(f"Input length must be divisible by 8, got {len(v)}")
+    reshaped = v.reshape(-1, 8)
+    return reshaped.mean(axis=1)
+
 def compute_layer_brightness(x28: np.ndarray, acts: dict):
     """
     Compute brightness arrays for each layer:
       - 'input': (4,)   from quadrants of image
-      - 'h1':    (20,)  from acts["hidden1"]
-      - 'h2':    (12,)  from acts["hidden2"]
+      - 'h1':    (20,)  from acts["hidden1"] (160 neurons averaged to 20, groups of 8)
+      - 'h2':    (12,)  from acts["hidden2"] (96 neurons averaged to 12, groups of 8)
       - 'out':   (10,)  from acts["output"]
     Returns dict layer_name -> np.ndarray[uint8].
     """
     input_vals = compute_input_activations_from_image(x28)
     input_b = normalize_to_0_255(input_vals)
 
-    h1_b = normalize_to_0_255(acts["hidden1"])
-    h2_b = normalize_to_0_255(acts["hidden2"])
+    # Hidden layer 1: 160 neurons -> average groups of 8 -> 20 LEDs
+    h1_raw = normalize_to_0_255(acts["hidden1"])
+    h1_b = average_groups_of_8(h1_raw)
+
+    # Hidden layer 2: 96 neurons -> average groups of 8 -> 12 LEDs
+    h2_raw = normalize_to_0_255(acts["hidden2"])
+    h2_b = average_groups_of_8(h2_raw)
+
     out_b = normalize_to_0_255(acts["output"])
 
     return {

@@ -10,11 +10,11 @@ if not os.path.exists("mnist_mlp_weights.npz"):
 weights = np.load("mnist_mlp_weights.npz")
 
 expected_shapes = {
-    "W1": (20, 784), # First hidden layer: 20 neurons
-    "b1": (20,),
-    "W2": (12, 20), # Second hidden layer: 12 neurons
-    "b2": (12,),
-    "W3": (10, 12), # Output layer: 10 neurons
+    "W1": (160, 784), # First hidden layer: 160 neurons (8x from 20)
+    "b1": (160,),
+    "W2": (96, 160), # Second hidden layer: 96 neurons (8x from 12)
+    "b2": (96,),
+    "W3": (10, 96), # Output layer: 10 neurons
     "b3": (10,),
 }
 
@@ -51,22 +51,23 @@ def softmax(x, temperature=1.0):
 def run_nn_stepwise(x_flat: np.ndarray):
     """Run neural network forward pass.
     
-    Architecture: 784 → 20 → 12 → 10
+    Architecture: 784 → 160 → 96 → 10
+    Note: For LED display, hidden layers are averaged down to 20 and 12 LEDs (groups of 8)
     """
     acts = {}
     acts["input"] = x_flat
 
-    # First hidden layer: 784 → 20 (ReLU activation)
+    # First hidden layer: 784 → 160 (ReLU activation)
     z1 = W1 @ x_flat + b1
     a1 = relu(z1)
     acts["hidden1"] = a1
 
-    # Second hidden layer: 20 → 12 (ReLU activation)
+    # Second hidden layer: 160 → 96 (ReLU activation)
     z2 = W2 @ a1 + b2
     a2 = relu(z2)
     acts["hidden2"] = a2
 
-    # Output layer: 12 → 10 (softmax activation)
+    # Output layer: 96 → 10 (softmax activation)
     z3 = W3 @ a2 + b3
     acts["logits"] = z3.copy()
     out = softmax(z3, temperature=1.5)

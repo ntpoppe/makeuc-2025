@@ -33,14 +33,15 @@ steps_per_epoch = math.ceil(total_train_samples / batch_size)
 train_ds = train_ds.shuffle(total_train_samples, reshuffle_each_iteration=True)
 train_ds = train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-# MLP: 784 → 20 → 12 → 10
-# Two hidden layers: 20 neurons, then 12 neurons
+# MLP: 784 → 160 → 96 → 10
+# Two hidden layers: 160 neurons, then 96 neurons (8x from original 20→12)
+# Note: For LED display, these are averaged down to 20 and 12 LEDs respectively (groups of 8)
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(28, 28)),
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(20, activation="relu", name="hidden1",
+    tf.keras.layers.Dense(160, activation="relu", name="hidden1",
                           kernel_initializer="he_normal"),
-    tf.keras.layers.Dense(12, activation="relu", name="hidden2",
+    tf.keras.layers.Dense(96, activation="relu", name="hidden2",
                           kernel_initializer="he_normal"),
     tf.keras.layers.Dense(10, activation="softmax", name="output"),
 ])
