@@ -141,7 +141,7 @@ def build_led_buffer(x28: np.ndarray):
     led_buffer[18:24] = layer_b["h3"]
     
     # Output: 10 LEDs (24-33)
-    # Physical mapping: 5A-5F (digits 0-5), 6A-6D (digits 6-9)
+    # Physical mapping: 5A-5B (digits 0-1), 6A-6B (digits 2-3), 7A-7F (digits 4-9)
     # Use confidence values (softmax probabilities) directly - already in range 0.0-1.0
     # All 10 digits show their confidence levels, with the predicted digit naturally brightest
     output_confidences = output.astype(np.float32)
@@ -158,7 +158,7 @@ def create_2d_matrix(led_buffer: np.ndarray) -> np.ndarray:
     - Row indices: 0-6 (representing physical rows 1-7)
     - Col indices: 0-5 (representing columns A-F)
     - Values: brightness (0.0-1.0) or 0.0 for empty positions
-    - Row 7 (index 6) is empty/faked (all zeros)
+    - Row 7 (index 6) contains output digits 4-9 (7A-7F)
     
     Args:
         led_buffer: Linear array of brightness values (34 elements, 0.0-1.0)
@@ -197,8 +197,9 @@ def matrix_coordinate_map(led_index: int) -> tuple[int, str]:
         Row 2 (hidden1):  2A-2F  -> indices 6-11
         Row 3 (hidden2):  3A-3F  -> indices 12-17
         Row 4 (hidden3):  4A-4F  -> indices 18-23
-        Row 5 (output):   5A-5F  -> indices 24-29 (digits 0-5)
-        Row 6 (output):   6A-6D  -> indices 30-33 (digits 6-9)
+        Row 5 (output):   5A-5B  -> indices 24-25 (digits 0-1)
+        Row 6 (output):   6A-6B  -> indices 26-27 (digits 2-3)
+        Row 7 (output):   7A-7F  -> indices 28-33 (digits 4-9)
     
     Returns: (row: int, col: str) where col is 'A'-'F'
     """
@@ -217,12 +218,15 @@ def matrix_coordinate_map(led_index: int) -> tuple[int, str]:
     elif led_index < 24:
         # Row 4: hidden3
         return (4, chr(ord('A') + (led_index - 18)))
-    elif led_index < 30:
-        # Row 5: output (digits 0-5)
+    elif led_index < 26:
+        # Row 5: output (only A, B) - digits 0-1
         return (5, chr(ord('A') + (led_index - 24)))
+    elif led_index < 28:
+        # Row 6: output (only A, B) - digits 2-3
+        return (6, chr(ord('A') + (led_index - 26)))
     else:
-        # Row 6: output (digits 6-9, only A-D)
-        return (6, chr(ord('A') + (led_index - 30)))
+        # Row 7: output (A-F) - digits 4-9
+        return (7, chr(ord('A') + (led_index - 28)))
 
 
 def get_matrix_layout() -> dict:
