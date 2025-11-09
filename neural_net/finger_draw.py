@@ -27,7 +27,7 @@ from config import (
 )
 from preprocessing import preprocess_for_mnist
 from mnist_model import predict_digit_from_28x28
-from nnpayload import build_led_buffer
+from nnpayload import build_led_buffer, create_2d_matrix
 from led_driver import handle_led_buffer
 
 def open_camera(index: int = CAMERA_INDEX, width: int = 640, height: int = 480, fps: int = 30):
@@ -104,7 +104,8 @@ def predict_digit(canvas):
     model_input = np.clip(model_input, 0.0, 1.0)
     
     digit, led_buffer = build_led_buffer(model_input)
-    handle_led_buffer(led_buffer, digit)
+    matrix_2d = create_2d_matrix(led_buffer)
+    handle_led_buffer(matrix_2d, digit)
     
     _, probs, _ = predict_digit_from_28x28(model_input)
     confidence = float(probs[digit])
