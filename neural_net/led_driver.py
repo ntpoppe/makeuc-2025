@@ -2,7 +2,7 @@ import numpy as np
 from gpiozero import PWMLED
 
 # Matrix configuration
-MATRIX_ROWS = 6
+MATRIX_ROWS = 7
 MATRIX_COLS = 6  # A-F
 
 def handle_led_buffer(matrix_2d: np.ndarray, digit: int | None = None):

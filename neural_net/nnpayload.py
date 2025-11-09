@@ -1,13 +1,14 @@
 import numpy as np
 from mnist_model import predict_digit_from_28x28
 
-LED_COUNT = 28  # 6 input + 6 h1 + 6 h2 + 10 output
+LED_COUNT = 34  # 6 input + 6 h1 + 6 h2 + 6 h3 + 10 output
 
 LAYER_OFFSETS = {
     "input": (0, 6),    # LEDs 0-5   (row 1: 1A-1F)
     "h1":    (6, 12),   # LEDs 6-11  (row 2: 2A-2F)
     "h2":    (12, 18),  # LEDs 12-17 (row 3: 3A-3F)
-    "out":   (18, 28),  # LEDs 18-27 (rows 4-6: 4A,4B,5A,5B,6A-6F)
+    "h3":    (18, 24),  # LEDs 18-23 (row 4: 4A-4F)
+    "out":   (24, 34),  # LEDs 24-33 (rows 5-6: 5A-5F, 6A-6D)
 }
 
 def compute_input_activations_from_image(x28: np.ndarray) -> np.ndarray:
@@ -77,6 +78,7 @@ def compute_layer_brightness(x28: np.ndarray, acts: dict):
       - 'input': (6,)   from 2x3 grid regions of image
       - 'h1':    (6,)   from acts["hidden1"] (160 neurons averaged to 6)
       - 'h2':    (6,)   from acts["hidden2"] (96 neurons averaged to 6)
+      - 'h3':    (6,)   from random numbers (simulated hidden layer)
       - 'out':   (10,)  from acts["output"] (direct mapping)
     Returns dict layer_name -> np.ndarray[float32] with values in [0.0, 1.0].
     """
@@ -91,12 +93,17 @@ def compute_layer_brightness(x28: np.ndarray, acts: dict):
     h2_raw = normalize_to_0_1(acts["hidden2"])
     h2_b = average_to_n_groups(h2_raw, 6)
 
+    # Hidden layer 3: Generate random activations (simulated)
+    h3_raw = np.random.rand(6).astype(np.float32)
+    h3_b = normalize_to_0_1(h3_raw)
+
     out_b = normalize_to_0_1(acts["output"])
 
     return {
         "input": input_b,
         "h1":    h1_b,
         "h2":    h2_b,
+        "h3":    h3_b,
         "out":   out_b,
     }
 
@@ -107,7 +114,7 @@ def build_led_buffer(x28: np.ndarray):
       - Runs NN
       - Returns:
           digit: int (0-9)
-          led_buffer: np.ndarray shape (28,), dtype=float32
+          led_buffer: np.ndarray shape (34,), dtype=float32
                       brightness values 0.0-1.0 for each LED in linear order.
                       Use matrix_coordinate_map() to convert to physical matrix positions.
     """
@@ -129,14 +136,16 @@ def build_led_buffer(x28: np.ndarray):
     # Physical mapping: 3A, 3B, 3C, 3D, 3E, 3F
     led_buffer[12:18] = layer_b["h2"]
     
-    # Output: 10 LEDs (18-27)
-    # Physical mapping: 4A (digit 0), 4B (digit 1), 5A (digit 2), 5B (digit 3),
-    #                   6A (digit 4), 6B (digit 5), 6C (digit 6), 6D (digit 7),
-    #                   6E (digit 8), 6F (digit 9)
+    # Hidden3: 6 LEDs (18-23)
+    # Physical mapping: 4A, 4B, 4C, 4D, 4E, 4F
+    led_buffer[18:24] = layer_b["h3"]
+    
+    # Output: 10 LEDs (24-33)
+    # Physical mapping: 5A-5F (digits 0-5), 6A-6D (digits 6-9)
     # Use confidence values (softmax probabilities) directly - already in range 0.0-1.0
     # All 10 digits show their confidence levels, with the predicted digit naturally brightest
     output_confidences = output.astype(np.float32)
-    led_buffer[18:28] = output_confidences
+    led_buffer[24:34] = output_confidences
 
     return digit, led_buffer
 
@@ -145,22 +154,23 @@ def create_2d_matrix(led_buffer: np.ndarray) -> np.ndarray:
     """
     Convert linear LED buffer into a 2D array representation of the physical matrix.
     
-    Returns a 6x6 numpy array where:
-    - Row indices: 0-5 (representing physical rows 1-6)
+    Returns a 7x6 numpy array where:
+    - Row indices: 0-6 (representing physical rows 1-7)
     - Col indices: 0-5 (representing columns A-F)
     - Values: brightness (0.0-1.0) or 0.0 for empty positions
+    - Row 7 (index 6) is empty/faked (all zeros)
     
     Args:
-        led_buffer: Linear array of brightness values (28 elements, 0.0-1.0)
+        led_buffer: Linear array of brightness values (34 elements, 0.0-1.0)
     
     Returns:
-        2D numpy array shape (6, 6) with brightness values (float32)
+        2D numpy array shape (7, 6) with brightness values (float32)
     """
     if len(led_buffer) != LED_COUNT:
         raise ValueError(f"Expected buffer length {LED_COUNT}, got {len(led_buffer)}")
     
-    # Initialize 2D matrix with zeros
-    MATRIX_ROWS = 6
+    # Initialize 2D matrix with zeros (7 rows x 6 cols)
+    MATRIX_ROWS = 7
     MATRIX_COLS = 6
     matrix_2d = np.zeros((MATRIX_ROWS, MATRIX_COLS), dtype=np.float32)
     
@@ -173,6 +183,8 @@ def create_2d_matrix(led_buffer: np.ndarray) -> np.ndarray:
         col_idx = ord(col) - ord('A')
         matrix_2d[row_idx, col_idx] = brightness
     
+    # Row 7 (index 6) remains all zeros (faked/empty row)
+    
     return matrix_2d
 
 
@@ -184,9 +196,9 @@ def matrix_coordinate_map(led_index: int) -> tuple[int, str]:
         Row 1 (input):    1A-1F  -> indices 0-5
         Row 2 (hidden1):  2A-2F  -> indices 6-11
         Row 3 (hidden2):  3A-3F  -> indices 12-17
-        Row 4 (output):   4A-4B  -> indices 18-19
-        Row 5 (output):   5A-5B  -> indices 20-21
-        Row 6 (output):   6A-6F  -> indices 22-27
+        Row 4 (hidden3):  4A-4F  -> indices 18-23
+        Row 5 (output):   5A-5F  -> indices 24-29 (digits 0-5)
+        Row 6 (output):   6A-6D  -> indices 30-33 (digits 6-9)
     
     Returns: (row: int, col: str) where col is 'A'-'F'
     """
@@ -202,15 +214,15 @@ def matrix_coordinate_map(led_index: int) -> tuple[int, str]:
     elif led_index < 18:
         # Row 3: hidden2
         return (3, chr(ord('A') + (led_index - 12)))
-    elif led_index < 20:
-        # Row 4: output (only A, B)
+    elif led_index < 24:
+        # Row 4: hidden3
         return (4, chr(ord('A') + (led_index - 18)))
-    elif led_index < 22:
-        # Row 5: output (only A, B)
-        return (5, chr(ord('A') + (led_index - 20)))
+    elif led_index < 30:
+        # Row 5: output (digits 0-5)
+        return (5, chr(ord('A') + (led_index - 24)))
     else:
-        # Row 6: output (A-F)
-        return (6, chr(ord('A') + (led_index - 22)))
+        # Row 6: output (digits 6-9, only A-D)
+        return (6, chr(ord('A') + (led_index - 30)))
 
 
 def get_matrix_layout() -> dict:
