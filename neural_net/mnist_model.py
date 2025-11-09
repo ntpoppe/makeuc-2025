@@ -10,14 +10,16 @@ if not os.path.exists("mnist_mlp_weights.npz"):
 weights = np.load("mnist_mlp_weights.npz")
 
 expected_shapes = {
-    "W1": (128, 784),
-    "b1": (128,),
-    "W2": (128, 128),
-    "b2": (128,),
-    "W3": (64, 128),
+    "W1": (64, 784),
+    "b1": (64,),
+    "W2": (64, 64),
+    "b2": (64,),
+    "W3": (64, 64),
     "b3": (64,),
-    "W4": (10, 64),
-    "b4": (10,),
+    "W4": (64, 64),
+    "b4": (64,),
+    "W5": (10, 64),
+    "b5": (10,),
 }
 
 for key, expected_shape in expected_shapes.items():
@@ -40,6 +42,8 @@ W3 = weights["W3"]
 b3 = weights["b3"]
 W4 = weights["W4"]
 b4 = weights["b4"]
+W5 = weights["W5"]
+b5 = weights["b5"]
 
 def relu(x):
     return np.maximum(0, x)
@@ -70,8 +74,12 @@ def run_nn_stepwise(x_flat: np.ndarray):
     acts["hidden3"] = a3
 
     z4 = W4 @ a3 + b4
-    acts["logits"] = z4.copy()
-    out = softmax(z4, temperature=1.5)
+    a4 = relu(z4)
+    acts["hidden4"] = a4
+
+    z5 = W5 @ a4 + b5
+    acts["logits"] = z5.copy()
+    out = softmax(z5, temperature=1.5)
     acts["output"] = out
 
     return out, acts

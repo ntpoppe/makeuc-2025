@@ -252,11 +252,11 @@ train_ds = train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(28, 28)),
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(128, activation="relu", name="dense1", 
+    tf.keras.layers.Dense(64, activation="relu", name="dense1", 
                           kernel_initializer="he_normal"),
     tf.keras.layers.BatchNormalization(name="bn1"),
     tf.keras.layers.Dropout(0.3, name="dropout1"),
-    tf.keras.layers.Dense(128, activation="relu", name="dense2",
+    tf.keras.layers.Dense(64, activation="relu", name="dense2",
                           kernel_initializer="he_normal"),
     tf.keras.layers.BatchNormalization(name="bn2"),
     tf.keras.layers.Dropout(0.3, name="dropout2"),
@@ -264,6 +264,10 @@ model = tf.keras.Sequential([
                           kernel_initializer="he_normal"),
     tf.keras.layers.BatchNormalization(name="bn3"),
     tf.keras.layers.Dropout(0.2, name="dropout3"),
+    tf.keras.layers.Dense(64, activation="relu", name="dense4",
+                          kernel_initializer="he_normal"),
+    tf.keras.layers.BatchNormalization(name="bn4"),
+    tf.keras.layers.Dropout(0.2, name="dropout4"),
     tf.keras.layers.Dense(10, activation="softmax", name="output"),
 ])
 
@@ -326,17 +330,20 @@ print("\nExtracting weights...")
 dense1 = model.get_layer("dense1")
 dense2 = model.get_layer("dense2")
 dense3 = model.get_layer("dense3")
+dense4 = model.get_layer("dense4")
 output = model.get_layer("output")
 
 W1, b1 = dense1.get_weights()
 W2, b2 = dense2.get_weights()
 W3, b3 = dense3.get_weights()
-W4, b4 = output.get_weights()
+W4, b4 = dense4.get_weights()
+W5, b5 = output.get_weights()
 
 W1 = W1.T
 W2 = W2.T
 W3 = W3.T
 W4 = W4.T
+W5 = W5.T
 
 np.savez(
     "mnist_mlp_weights.npz",
@@ -344,6 +351,7 @@ np.savez(
     W2=W2, b2=b2,
     W3=W3, b3=b3,
     W4=W4, b4=b4,
+    W5=W5, b5=b5,
 )
 
 print("✓ Saved weights to mnist_mlp_weights.npz")
