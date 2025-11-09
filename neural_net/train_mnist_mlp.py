@@ -33,12 +33,14 @@ steps_per_epoch = math.ceil(total_train_samples / batch_size)
 train_ds = train_ds.shuffle(total_train_samples, reshuffle_each_iteration=True)
 train_ds = train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-# Basic MLP: 784 → 32 → 10
-# Single hidden layer with 32 neurons (within 16-32 range)
+# MLP: 784 → 20 → 12 → 10
+# Two hidden layers: 20 neurons, then 12 neurons
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(28, 28)),
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(32, activation="relu", name="hidden1",
+    tf.keras.layers.Dense(20, activation="relu", name="hidden1",
+                          kernel_initializer="he_normal"),
+    tf.keras.layers.Dense(12, activation="relu", name="hidden2",
                           kernel_initializer="he_normal"),
     tf.keras.layers.Dense(10, activation="softmax", name="output"),
 ])
@@ -100,19 +102,23 @@ print(f"{'='*50}\n")
 
 print("\nExtracting weights...")
 hidden1 = model.get_layer("hidden1")
+hidden2 = model.get_layer("hidden2")
 output = model.get_layer("output")
 
 W1, b1 = hidden1.get_weights()
-W2, b2 = output.get_weights()
+W2, b2 = hidden2.get_weights()
+W3, b3 = output.get_weights()
 
 # Transpose to match NumPy format (out_features, in_features)
 W1 = W1.T
 W2 = W2.T
+W3 = W3.T
 
 np.savez(
     "mnist_mlp_weights.npz",
     W1=W1, b1=b1,
     W2=W2, b2=b2,
+    W3=W3, b3=b3,
 )
 
 print("✓ Saved weights to mnist_mlp_weights.npz")

@@ -27,6 +27,8 @@ from config import (
 )
 from preprocessing import preprocess_for_mnist
 from mnist_model import predict_digit_from_28x28
+from nnpayload import build_led_buffer
+from led_driver import handle_led_buffer
 
 def open_camera(index: int = CAMERA_INDEX, width: int = 640, height: int = 480, fps: int = 30):
     """
@@ -101,7 +103,10 @@ def predict_digit(canvas):
     model_input = preprocessed_debug.astype(np.float32) / 255.0
     model_input = np.clip(model_input, 0.0, 1.0)
     
-    digit, probs, acts = predict_digit_from_28x28(model_input)
+    digit, led_buffer = build_led_buffer(model_input)
+    handle_led_buffer(led_buffer, digit)
+    
+    _, probs, _ = predict_digit_from_28x28(model_input)
     confidence = float(probs[digit])
     return digit, confidence, preprocessed_debug
 
@@ -162,7 +167,6 @@ def create_preview(frame, canvas, fingertip_point, results, frame_w, frame_h, pr
 
 
 def main():
-    """main application loop."""
     os.makedirs(TRACES_DIR, exist_ok=True)
     os.makedirs(TRACES_PREPROCESSED_DIR, exist_ok=True)
     
@@ -217,10 +221,10 @@ def main():
 
                 no_hand_frames = 0
 
-                # 1. Smooth fingertip
+                # Smooth fingertip
                 smoothed_point = smooth_point(smoothed_point, fingertip_point)
 
-                # 2. Only draw if we have a previous point
+                # Only draw if we have a previous point
                 if last_point is not None and smoothed_point is not None:
                     dx = smoothed_point[0] - last_point[0]
                     dy = smoothed_point[1] - last_point[1]
@@ -234,7 +238,7 @@ def main():
 
                     speed = dist_px / dt
 
-                    # 3. Compute **target** thickness
+                    # Compute target thickness
                     if speed <= SPEED_FOR_MAX_THICK:
                         target_thickness = MAX_LINE_THICKNESS
                     elif speed >= SPEED_FOR_MIN_THICK:
@@ -245,7 +249,7 @@ def main():
                             MAX_LINE_THICKNESS + t * (MIN_LINE_THICKNESS - MAX_LINE_THICKNESS)
                         )
 
-                    # 4. **SMOOTH** thickness over time
+                    # Smooth thickness over time
                     if current_thickness is None:
                         current_thickness = target_thickness
                     else:
@@ -255,13 +259,13 @@ def main():
                         )
                     thickness = max(MIN_LINE_THICKNESS, min(MAX_LINE_THICKNESS, current_thickness))
 
-                    # 5. Jitter / jump control
+                    # Jitter / jump control
                     if dist_px < MIN_MOVE_PIXELS:
                         pass
                     elif dist_px > MAX_JUMP_PIXELS:
                         last_point = smoothed_point
                     else:
-                        # 6. DRAW with **smoothed** thickness
+                        # DRAW with smoothed thickness
                         cv2.line(canvas, last_point, smoothed_point, LINE_COLOR, thickness, cv2.LINE_AA)
                         cv2.circle(canvas, smoothed_point, thickness // 2, LINE_COLOR, -1, cv2.LINE_AA)
 
