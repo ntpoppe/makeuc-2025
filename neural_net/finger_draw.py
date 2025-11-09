@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import math
+import time
 from datetime import datetime
 
 from config import (
@@ -18,6 +19,11 @@ from config import (
     SMOOTHING_ALPHA,
     MIN_MOVE_PIXELS,
     MAX_JUMP_PIXELS,
+    MIN_LINE_THICKNESS,
+    MAX_LINE_THICKNESS,
+    SPEED_FOR_MIN_THICK,
+    SPEED_FOR_MAX_THICK,
+    THICKNESS_SMOOTHING_ALPHA,
 )
 from preprocessing import preprocess_for_mnist
 from mnist_model import predict_digit_from_28x28
@@ -179,6 +185,8 @@ def main():
     
     last_point = None
     smoothed_point = None
+    last_time = None
+    current_thickness = None
     no_hand_frames = 0
     has_active_stroke = False
     current_prediction = None
@@ -209,36 +217,69 @@ def main():
 
                 no_hand_frames = 0
 
-                # Update smoothed point
+                # 1. Smooth fingertip
                 smoothed_point = smooth_point(smoothed_point, fingertip_point)
 
+                # 2. Only draw if we have a previous point
                 if last_point is not None and smoothed_point is not None:
                     dx = smoothed_point[0] - last_point[0]
                     dy = smoothed_point[1] - last_point[1]
-                    dist = math.hypot(dx, dy)
+                    dist_px = math.hypot(dx, dy)
 
-                    # Ignore tiny jitter
-                    if dist < MIN_MOVE_PIXELS:
-                        # Don’t draw, but keep last_point so line stays continuous
+                    # Time delta
+                    now = time.time()
+                    dt = now - last_time if last_time else 0.033
+                    last_time = now
+                    if dt <= 0: dt = 0.033
+
+                    speed = dist_px / dt
+
+                    # 3. Compute **target** thickness
+                    if speed <= SPEED_FOR_MAX_THICK:
+                        target_thickness = MAX_LINE_THICKNESS
+                    elif speed >= SPEED_FOR_MIN_THICK:
+                        target_thickness = MIN_LINE_THICKNESS
+                    else:
+                        t = (speed - SPEED_FOR_MAX_THICK) / (SPEED_FOR_MIN_THICK - SPEED_FOR_MAX_THICK)
+                        target_thickness = int(
+                            MAX_LINE_THICKNESS + t * (MIN_LINE_THICKNESS - MAX_LINE_THICKNESS)
+                        )
+
+                    # 4. **SMOOTH** thickness over time
+                    if current_thickness is None:
+                        current_thickness = target_thickness
+                    else:
+                        current_thickness = int(
+                            THICKNESS_SMOOTHING_ALPHA * target_thickness +
+                            (1 - THICKNESS_SMOOTHING_ALPHA) * current_thickness
+                        )
+                    thickness = max(MIN_LINE_THICKNESS, min(MAX_LINE_THICKNESS, current_thickness))
+
+                    # 5. Jitter / jump control
+                    if dist_px < MIN_MOVE_PIXELS:
                         pass
-                    # If there’s a huge jump, treat as stroke break
-                    elif dist > MAX_JUMP_PIXELS:
+                    elif dist_px > MAX_JUMP_PIXELS:
                         last_point = smoothed_point
                     else:
-                        # Normal movement: draw smooth line
-                        cv2.line(canvas, last_point, smoothed_point, LINE_COLOR, LINE_THICKNESS)
+                        # 6. DRAW with **smoothed** thickness
+                        cv2.line(canvas, last_point, smoothed_point, LINE_COLOR, thickness, cv2.LINE_AA)
+                        cv2.circle(canvas, smoothed_point, thickness // 2, LINE_COLOR, -1, cv2.LINE_AA)
+
                         has_active_stroke = True
                         last_point = smoothed_point
                 else:
-                    # First point in the stroke
+                    # First point
                     last_point = smoothed_point
+                    last_time = time.time()
+                    current_thickness = MAX_LINE_THICKNESS  # start thick
+
             else:
-                # Hand not in "drawing" pose
                 last_point = None
                 smoothed_point = None
+                last_time = None
+                current_thickness = None
                 no_hand_frames += 1
-                
-                # Auto-predict and save after hand is gone
+
                 if no_hand_frames >= NO_HAND_FRAMES_THRESHOLD and has_active_stroke:
                     current_prediction = save_trace_image(canvas, has_active_stroke, current_prediction)
                     canvas.fill(255)
