@@ -156,63 +156,6 @@ def split_custom_eights(
     return train_x, train_y, val_x, val_y, test_x, test_y
 
 
-custom_eight_dir = os.path.join(os.path.dirname(__file__), "8s")
-custom_eight_x, custom_eight_y = (None, None)
-custom_eight_train_x = custom_eight_train_y = None
-if os.path.isdir(custom_eight_dir):
-    custom_eight_x, custom_eight_y = load_custom_eights(custom_eight_dir)
-    if custom_eight_x is not None:
-        (
-            custom_eight_train_x,
-            custom_eight_train_y,
-            custom_eight_val_x,
-            custom_eight_val_y,
-            custom_eight_test_x,
-            custom_eight_test_y,
-        ) = split_custom_eights(custom_eight_x, custom_eight_y)
-
-        if len(custom_eight_val_x):
-            x_val = np.concatenate([x_val, custom_eight_val_x], axis=0)
-            y_val = np.concatenate([y_val, custom_eight_val_y], axis=0)
-        if len(custom_eight_test_x):
-            x_test = np.concatenate([x_test, custom_eight_test_x], axis=0)
-            y_test = np.concatenate([y_test, custom_eight_test_y], axis=0)
-
-        x_train = np.concatenate([x_train, custom_eight_train_x], axis=0)
-        y_train = np.concatenate([y_train, custom_eight_train_y], axis=0)
-        print(
-            f"Integrated {len(custom_eight_train_x)} custom '8' samples into training, "
-            f"{len(custom_eight_val_x)} into validation, and {len(custom_eight_test_x)} into test from {custom_eight_dir}"
-        )
-
-custom_two_dir = os.path.join(os.path.dirname(__file__), "2s")
-custom_two_x, custom_two_y = (None, None)
-custom_two_train_x = custom_two_train_y = None
-if os.path.isdir(custom_two_dir):
-    custom_two_x, custom_two_y = load_custom_twos(custom_two_dir)
-    if custom_two_x is not None:
-        (
-            custom_two_train_x,
-            custom_two_train_y,
-            custom_two_val_x,
-            custom_two_val_y,
-            custom_two_test_x,
-            custom_two_test_y,
-        ) = split_custom_eights(custom_two_x, custom_two_y)
-
-        if len(custom_two_val_x):
-            x_val = np.concatenate([x_val, custom_two_val_x], axis=0)
-            y_val = np.concatenate([y_val, custom_two_val_y], axis=0)
-        if len(custom_two_test_x):
-            x_test = np.concatenate([x_test, custom_two_test_x], axis=0)
-            y_test = np.concatenate([y_test, custom_two_test_y], axis=0)
-
-        x_train = np.concatenate([x_train, custom_two_train_x], axis=0)
-        y_train = np.concatenate([y_train, custom_two_train_y], axis=0)
-        print(
-            f"Integrated {len(custom_two_train_x)} custom '2' samples into training, "
-            f"{len(custom_two_val_x)} into validation, and {len(custom_two_test_x)} into test from {custom_two_dir}"
-        )
 
 print(f"Training samples: {len(x_train)}")
 print(f"Validation samples: {len(x_val)}")
@@ -226,31 +169,7 @@ train_ds = train_ds.shuffle(len(x_train), reshuffle_each_iteration=True)
 val_ds = tf.data.Dataset.from_tensor_slices((x_val, y_val)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-augmentation_layer = build_custom_eight_augmentation()
-
-def augment_custom(image: tf.Tensor, label: tf.Tensor):
-    image = tf.expand_dims(image, -1)
-    image = augmentation_layer(image, training=True)
-    image = tf.squeeze(image, axis=-1)
-    image = tf.clip_by_value(image, 0.0, 1.0)
-    return image, label
-
 total_train_samples = len(x_train)
-
-if custom_eight_train_x is not None and len(custom_eight_train_x):
-    custom_eight_aug_ds = tf.data.Dataset.from_tensor_slices((custom_eight_train_x, custom_eight_train_y))
-    custom_eight_aug_ds = custom_eight_aug_ds.shuffle(len(custom_eight_train_x), reshuffle_each_iteration=True)
-    custom_eight_aug_ds = custom_eight_aug_ds.map(augment_custom, num_parallel_calls=tf.data.AUTOTUNE)
-    train_ds = train_ds.concatenate(custom_eight_aug_ds)
-    total_train_samples += len(custom_eight_train_x)
-
-if custom_two_train_x is not None and len(custom_two_train_x):
-    custom_two_aug_ds = tf.data.Dataset.from_tensor_slices((custom_two_train_x, custom_two_train_y))
-    custom_two_aug_ds = custom_two_aug_ds.shuffle(len(custom_two_train_x), reshuffle_each_iteration=True)
-    custom_two_aug_ds = custom_two_aug_ds.map(augment_custom, num_parallel_calls=tf.data.AUTOTUNE)
-    train_ds = train_ds.concatenate(custom_two_aug_ds)
-    total_train_samples += len(custom_two_train_x)
-
 steps_per_epoch = math.ceil(total_train_samples / batch_size)
 train_ds = train_ds.shuffle(total_train_samples, reshuffle_each_iteration=True)
 train_ds = train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)

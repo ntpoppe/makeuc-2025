@@ -100,7 +100,7 @@ def preprocess_for_mnist(
     roi_h, roi_w = roi.shape
     max_dimension = max(roi_w, roi_h)
     if max_dimension > 0:
-        scale = 24.0 / max_dimension
+        scale = 28.0 / max_dimension
         new_w = max(1, int(roi_w * scale))
         new_h = max(1, int(roi_h * scale))
     else:
