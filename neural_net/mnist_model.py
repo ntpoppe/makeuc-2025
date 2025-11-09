@@ -10,12 +10,10 @@ if not os.path.exists("mnist_mlp_weights.npz"):
 weights = np.load("mnist_mlp_weights.npz")
 
 expected_shapes = {
-    "W1": (64, 784),
-    "b1": (64,),
-    "W2": (64, 64),
-    "b2": (64,),
-    "W3": (10, 64),
-    "b3": (10,),
+    "W1": (32, 784),  # Hidden layer: 32 neurons
+    "b1": (32,),
+    "W2": (10, 32),   # Output layer: 10 neurons
+    "b2": (10,),
 }
 
 for key, expected_shape in expected_shapes.items():
@@ -34,8 +32,6 @@ W1 = weights["W1"]
 b1 = weights["b1"]
 W2 = weights["W2"]
 b2 = weights["b2"]
-W3 = weights["W3"]
-b3 = weights["b3"]
 
 def relu(x):
     return np.maximum(0, x)
@@ -49,21 +45,22 @@ def softmax(x, temperature=1.0):
     return e / np.sum(e)
 
 def run_nn_stepwise(x_flat: np.ndarray):
-    """Run neural network forward pass."""
+    """Run neural network forward pass.
+    
+    Architecture: 784 → 32 → 10
+    """
     acts = {}
     acts["input"] = x_flat
 
+    # Hidden layer: 784 → 32 (ReLU activation)
     z1 = W1 @ x_flat + b1
     a1 = relu(z1)
     acts["hidden1"] = a1
 
+    # Output layer: 32 → 10 (softmax activation)
     z2 = W2 @ a1 + b2
-    a2 = relu(z2)
-    acts["hidden2"] = a2
-
-    z3 = W3 @ a2 + b3
-    acts["logits"] = z3.copy()
-    out = softmax(z3, temperature=1.5)
+    acts["logits"] = z2.copy()
+    out = softmax(z2, temperature=1.5)
     acts["output"] = out
 
     return out, acts
