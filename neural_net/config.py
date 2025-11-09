@@ -19,7 +19,7 @@ MIN_MOVE_PIXELS = 2 # ignore tiny movements (jitter)
 MAX_JUMP_PIXELS = 80 # treat bigger jumps as “pen up”
 
 MIN_LINE_THICKNESS = 10 # thinnest line (when moving fast)
-MAX_LINE_THICKNESS = 30 # thickest line (when moving slow)
+MAX_LINE_THICKNESS = 20 # thickest line (when moving slow)
 SPEED_FOR_MIN_THICK = 600.0 # pixels/sec → MIN thickness (faster = thinner)
 SPEED_FOR_MAX_THICK = 80.0 # pixels/sec → MAX thickness (slower = thicker)
 THICKNESS_SMOOTHING_ALPHA = 0.3

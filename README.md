@@ -115,44 +115,9 @@ The model is trained on the MNIST dataset with the following architecture:
 - **Optimizer**: Adam with exponential decay
 - **Regularization**: Early stopping and model checkpointing
 
-To retrain with different architectures, modify `train_mnist_mlp.py` and ensure `mnist_model.py` and `nnpayload.py` match the new architecture.
-
-## 🎨 Features
-
-- **Real-time processing**: ~30 FPS camera processing with hand tracking
-- **Robust preprocessing**: Handles varied drawing styles and lighting conditions
-- **Interpretability**: LED visualization shows network activations at each layer
-- **Modular design**: Separate modules for capture, preprocessing, inference, visualization, and hardware
-- **Cross-platform camera support**: GStreamer, V4L2, and generic backends
-
-## 📊 Technical Details
-
-### Preprocessing Pipeline
-
-1. **Binarization**: Adaptive thresholding or Otsu thresholding
-2. **Morphology**: Closing/opening operations to clean noise
-3. **Bounding Box**: Finds digit region with padding
-4. **Normalization**: Centers and scales to 28×28
-5. **Blur & Threshold**: Light smoothing then binary threshold for solid white output
-
 ### LED Visualization
 
 The system maps neural network activations to LED brightness:
 - Each layer's activations are normalized to 0-255
 - Hidden layers are averaged (groups of 8) to fit LED hardware constraints
 - Output layer directly shows digit probabilities
-
-## 🤝 Contributing
-
-This project was developed for MakeUC 2025. Contributions welcome!
-
-## 📝 License
-
-[Add your license here]
-
-## 🙏 Acknowledgments
-
-- MNIST dataset
-- MediaPipe for hand tracking
-- TensorFlow/Keras for neural network training
-
