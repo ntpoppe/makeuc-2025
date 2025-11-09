@@ -10,9 +10,9 @@ if not os.path.exists("mnist_mlp_weights.npz"):
 weights = np.load("mnist_mlp_weights.npz")
 
 expected_shapes = {
-    "W1": (32, 784),  # Hidden layer: 32 neurons
+    "W1": (32, 784), # Hidden layer: 32 neurons
     "b1": (32,),
-    "W2": (10, 32),   # Output layer: 10 neurons
+    "W2": (10, 32), # Output layer: 10 neurons
     "b2": (10,),
 }
 
