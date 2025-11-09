@@ -33,8 +33,9 @@ b1 = weights["b1"]
 W2 = weights["W2"]
 b2 = weights["b2"]
 
-def relu(x):
-    return np.maximum(0, x)
+def leaky_relu(x, alpha=0.01):
+    """Leaky ReLU activation function."""
+    return np.maximum(alpha * x, x)
 
 def softmax(x, temperature=1.0):
     """Softmax with temperature scaling."""
@@ -52,9 +53,9 @@ def run_nn_stepwise(x_flat: np.ndarray):
     acts = {}
     acts["input"] = x_flat
 
-    # Hidden layer: 784 → 32 (ReLU activation)
+    # Hidden layer: 784 → 32 (Leaky ReLU activation)
     z1 = W1 @ x_flat + b1
-    a1 = relu(z1)
+    a1 = leaky_relu(z1)
     acts["hidden1"] = a1
 
     # Output layer: 32 → 10 (softmax activation)

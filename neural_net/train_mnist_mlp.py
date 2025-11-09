@@ -38,7 +38,7 @@ train_ds = train_ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(28, 28)),
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(32, activation="relu", name="hidden1",
+    tf.keras.layers.Dense(32, activation="leaky_relu", name="hidden1",
                           kernel_initializer="he_normal"),
     tf.keras.layers.Dense(10, activation="softmax", name="output"),
 ])
